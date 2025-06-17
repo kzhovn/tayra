@@ -1,0 +1,5 @@
+backend/venv/*
+.claude/
+backend/__pycache__/*
+backend/instance/*
+frontend/node_modules/*
