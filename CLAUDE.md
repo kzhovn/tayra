@@ -8,7 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 cd frontend
 npm start          # Development server on localhost:3000
-npm test           # Run test suite
 npm run build      # Production build
 ```
 
@@ -24,16 +23,25 @@ The frontend automatically proxies API requests to the backend server.
 
 Tayra is a full-stack task management application with a React frontend and Flask backend using SQLite database.
 
-**Frontend Structure:**
-- Single-component architecture in `frontend/src/App.js` (755 lines)
+**Frontend Structure (Modular):**
+- `src/App.js` - Main application component (~280 lines)
+- `src/components/` - Reusable UI components
+  - `TaskItem.js` - Individual task display and editing
+  - `Sidebar.js` - Navigation and category management
+  - `TodayView.js` - Today's tasks with sections
+- `src/hooks/` - Custom React hooks for business logic
+  - `useTasks.js` - Task management state and operations
+  - `useCategories.js` - Category management
+- `src/api.js` - Centralized API communication
+- `src/taskUtils.js` - Task filtering and organization utilities
 - Uses Tailwind CSS utilities implemented in custom CSS
 - Drag-and-drop day planning interface
 - Keyboard shortcuts (Spacebar for quick add, Escape to close)
 
 **Backend Structure:**
-- Flask REST API in `backend/app.py`
+- Flask REST API in `backend/app.py` (clean, minimal)
 - SQLAlchemy ORM with SQLite database
-- Four main tables: Category, Task, Project, Subtask
+- Three main tables: Category, Task, Subtask
 - Database auto-initializes with default categories
 
 **Key Features:**
@@ -41,14 +49,14 @@ Tayra is a full-stack task management application with a React frontend and Flas
 - Category-based organization with color coding
 - Priority levels and due date scheduling
 - Ephemeral tasks (auto-delete if incomplete)
-- Multiple views: Today, All Tasks, Projects
+- Multiple views: Today, All Tasks
 
 ## Database Schema
 
 Tasks have rich properties including:
 - Basic: title, description, notes
 - Scheduling: due_date, do_date
-- Organization: category, priority, project
+- Organization: category, priority
 - Behavior: ephemeral flag, completion status
 - Relationships: subtasks with individual completion
 
@@ -56,14 +64,23 @@ Tasks have rich properties including:
 
 Base URL: `http://localhost:5000/api`
 
-- `GET /health` - Health check
+**Categories:**
 - `GET /categories` - Fetch all categories
+- `POST /categories` - Create new category
+- `DELETE /categories/<id>` - Delete category (moves tasks to General)
+
+**Tasks:**
 - `GET /tasks` - Fetch all tasks
 - `POST /tasks` - Create task
 - `PUT /tasks/<id>` - Update task
 - `DELETE /tasks/<id>` - Delete task
+
+**Subtasks:**
 - `POST /tasks/<id>/subtasks` - Create subtask
 - `PUT /subtasks/<id>` - Update subtask
+
+**Health:**
+- `GET /health` - Health check
 
 ## Development Notes
 

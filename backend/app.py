@@ -2,8 +2,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from datetime import datetime, date
+from datetime import datetime, timezone
 import uuid
 import os
 
@@ -12,7 +11,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///tay
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 CORS(app)
 
 # Models
@@ -32,8 +30,8 @@ class Task(db.Model):
     completed = db.Column(db.Boolean, default=False)
     is_ephemeral = db.Column(db.Boolean, default=False)
     notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     category = db.relationship('Category', backref='tasks')
     subtasks = db.relationship('Subtask', backref='task', cascade='all, delete-orphan')
@@ -44,15 +42,6 @@ class Subtask(db.Model):
     title = db.Column(db.String(200), nullable=False)
     completed = db.Column(db.Boolean, default=False)
 
-class Project(db.Model):
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    title = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text)
-    category_id = db.Column(db.String(36), db.ForeignKey('category.id'))
-    type = db.Column(db.String(20), default='parallel')
-    completed = db.Column(db.Boolean, default=False)
-
-    category = db.relationship('Category')
 
 # Serializers
 def serialize_task(task):
@@ -79,16 +68,6 @@ def serialize_category(category):
         'color': category.color
     }
 
-def serialize_project(project):
-    return {
-        'id': project.id,
-        'title': project.title,
-        'description': project.description,
-        'category': project.category_id,
-        'type': project.type,
-        'completed': project.completed,
-        'tasks': []
-    }
 
 # API Routes
 @app.route('/api/health')
@@ -117,53 +96,33 @@ def create_category():
 @app.route('/api/categories/<category_id>', methods=['DELETE'])
 def delete_category(category_id):
     try:
-        print(f"=== DELETE REQUEST RECEIVED FOR CATEGORY: {category_id} ===")
-        
         category = Category.query.get_or_404(category_id)
-        print(f"Found category: {category.name}")
         
         # Ensure default category exists
         default_category = Category.query.filter_by(id='default').first()
         if not default_category:
-            print("Creating default category")
             default_category = Category(id='default', name='General', color='#6B7280')
             db.session.add(default_category)
-            db.session.flush()  # Flush to get the ID before committing
+            db.session.flush()
         
         # Move all tasks in this category to the default category
         tasks_in_category = Task.query.filter_by(category_id=category_id).all()
-        print(f"Found {len(tasks_in_category)} tasks in category {category_id}")
-        
         for task in tasks_in_category:
-            print(f"Moving task '{task.title}' from {task.category_id} to default")
-            old_category = task.category_id
             task.category_id = 'default'
-            task.updated_at = datetime.utcnow()
-            print(f"Task {task.title} category changed from {old_category} to {task.category_id}")
+            task.updated_at = datetime.now(timezone.utc)
         
         # Commit the task updates first
         db.session.commit()
-        print("Task updates committed")
         
-        # Verify task moves before deleting category
-        remaining_tasks = Task.query.filter_by(category_id=category_id).all()
-        print(f"Tasks still in {category_id} after update: {len(remaining_tasks)}")
-        
-        print(f"Deleting category: {category.name}")
+        # Delete the category
         db.session.delete(category)
         db.session.commit()
-        
-        # Verify tasks were moved
-        moved_tasks = Task.query.filter_by(category_id='default').all()
-        print(f"After commit: {len(moved_tasks)} tasks in default category")
-        print("=== DELETE COMPLETED SUCCESSFULLY ===")
         
         return '', 204
         
     except Exception as e:
-        print(f"ERROR in delete_category: {e}")
         db.session.rollback()
-        return str(e), 500
+        return {'error': str(e)}, 500
 
 @app.route('/api/tasks')
 def get_tasks():
@@ -229,7 +188,7 @@ def update_task(task_id):
     task.completed = data.get('completed', task.completed)
     task.is_ephemeral = data.get('isEphemeral', task.is_ephemeral)
     task.notes = data.get('notes', task.notes)
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now(timezone.utc)
 
     db.session.commit()
     return serialize_task(task)
@@ -243,7 +202,8 @@ def delete_task(task_id):
 
 @app.route('/api/tasks/<task_id>/subtasks', methods=['POST'])
 def create_subtask(task_id):
-    task = Task.query.get_or_404(task_id)
+    # Verify task exists
+    Task.query.get_or_404(task_id)
     data = request.json
 
     subtask = Subtask(
@@ -266,11 +226,6 @@ def update_subtask(subtask_id):
 
     db.session.commit()
     return {'id': subtask.id, 'title': subtask.title, 'completed': subtask.completed}
-
-@app.route('/api/projects')
-def get_projects():
-    projects = Project.query.all()
-    return [serialize_project(project) for project in projects]
 
 def init_db():
     with app.app_context():
